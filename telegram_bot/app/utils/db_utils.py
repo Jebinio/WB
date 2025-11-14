@@ -83,8 +83,8 @@ class AccountRepository:
 
     @staticmethod
     async def create_account(session: AsyncSession, user_id: int, file_path: str, month: str):
-        """Создать новый аккаунт"""
-        account = Account(user_id=user_id, file_path=file_path, month=month)
+        """Создать новый аккаунт (по умолчанию статус Проверен)"""
+        account = Account(user_id=user_id, file_path=file_path, month=month, sent=True, locked=False)
         session.add(account)
         await session.commit()
         await session.refresh(account)

@@ -2,32 +2,36 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 # ============ ПОЛЬЗОВАТЕЛЬСКИЕ КЛАВИАТУРЫ ============
 
-def get_user_main_keyboard() -> ReplyKeyboardMarkup:
+def get_user_main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Главное меню пользователя"""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📤 Отправить аккаунт")],
-            [KeyboardButton(text="🌐 Запросить прокси")],
-            [KeyboardButton(text="📱 Запросить номера")],
-            [KeyboardButton(text="💳 Прикрепить TRX-кошелек")],
-        ],
-        resize_keyboard=True
-    )
+    buttons = [
+        [InlineKeyboardButton(text="📤 Отправить аккаунт", callback_data="user_send_account")],
+        [InlineKeyboardButton(text="🌐 Запросить прокси", callback_data="user_request_proxy")],
+        [InlineKeyboardButton(text="📱 Запросить номера", callback_data="user_request_numbers")],
+        [InlineKeyboardButton(text="💳 Прикрепить TRX-кошелек", callback_data="user_attach_wallet")],
+        [InlineKeyboardButton(text="🕒 Открыть смену", callback_data="user_open_shift")],
+        [InlineKeyboardButton(text="🔒 Закрыть смену", callback_data="user_close_shift")],
+    ]
+    
+    # Добавить кнопку админа если пользователь админ
+    if is_admin:
+        buttons.append([InlineKeyboardButton(text="👨‍💼 Админ панель", callback_data="user_to_admin_panel")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     return keyboard
 
 
 # ============ АДМИНСКИЕ КЛАВИАТУРЫ ============
 
-def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
+def get_admin_main_keyboard() -> InlineKeyboardMarkup:
     """Главное меню администратора"""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📋 Просмотр аккаунтов")],
-            [KeyboardButton(text="👥 Управление пользователями")],
-            [KeyboardButton(text="📢 Отправить уведомление")],
-            [KeyboardButton(text="🔐 Управление доступами")],
-        ],
-        resize_keyboard=True
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Просмотр аккаунтов", callback_data="admin_view_accounts")],
+            [InlineKeyboardButton(text="👥 Управление пользователями", callback_data="admin_manage_users")],
+            [InlineKeyboardButton(text="📢 Отправить уведомление", callback_data="admin_send_notification")],
+            [InlineKeyboardButton(text="➕ Добавить админа", callback_data="admin_add_admin")],
+        ]
     )
     return keyboard
 
@@ -36,10 +40,10 @@ def get_accounts_view_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для просмотра аккаунтов"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📅 По месяцам", callback_data="accounts_by_month")],
+            [InlineKeyboardButton(text="👤 По пользователю", callback_data="accounts_by_user")],
             [InlineKeyboardButton(text="📊 Все аккаунты", callback_data="accounts_all")],
             [InlineKeyboardButton(text="⏳ Неотправленные", callback_data="accounts_unsent")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_view_accounts")],
         ]
     )
     return keyboard
@@ -52,7 +56,7 @@ def get_notification_type_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="💰 Зарплата выдана", callback_data="notify_salary")],
             [InlineKeyboardButton(text="📞 Назначен созвон", callback_data="notify_call")],
             [InlineKeyboardButton(text="⚠️ Назначен штраф", callback_data="notify_penalty")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_send_notification")],
         ]
     )
     return keyboard
@@ -64,7 +68,7 @@ def get_notification_recipient_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="👤 Конкретному пользователю", callback_data="notify_single")],
             [InlineKeyboardButton(text="👥 Всем пользователям", callback_data="notify_all")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_send_notification")],
         ]
     )
     return keyboard
@@ -91,6 +95,33 @@ def get_account_actions_keyboard(account_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="❌ Не отправлено", callback_data=f"account_unsent_{account_id}")],
             [InlineKeyboardButton(text="🔒 Заблокировать", callback_data=f"account_lock_{account_id}")],
             [InlineKeyboardButton(text="🔓 Разблокировать", callback_data=f"account_unlock_{account_id}")],
+        ]
+    )
+    return keyboard
+
+
+def get_new_user_approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для одобрения/отказа новому пользователю"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Разрешить", callback_data=f"approve_new_user_{user_id}"),
+                InlineKeyboardButton(text="❌ Запретить", callback_data=f"deny_new_user_{user_id}")
+            ]
+        ]
+    )
+    return keyboard
+
+
+def get_user_management_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для управления пользователями"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Разрешить доступ", callback_data="manage_allow_user")],
+            [InlineKeyboardButton(text="❌ Запретить доступ", callback_data="manage_deny_user")],
+            [InlineKeyboardButton(text="📋 Информация о пользователе", callback_data="manage_user_info")],
+            [InlineKeyboardButton(text="👥 Список всех пользователей", callback_data="manage_list_users")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
         ]
     )
     return keyboard

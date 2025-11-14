@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: telegram_bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_IDS=${ADMIN_IDS}
+      - DATABASE_URL=sqlite+aiosqlite:///./app/database.db
+      - UPLOAD_DIR=/app/data/uploads
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./app/database.db:/app/app/database.db
+    restart: unless-stopped
+    networks:
+      - bot_network
+
+networks:
+  bot_network:
+    driver: bridge
