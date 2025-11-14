@@ -1,0 +1,5 @@
+aiogram>=3.0,<4.0
+python-dotenv>=1.0
+sqlalchemy>=2.0
+aiosqlite>=0.19
+python-dateutil>=2.8
