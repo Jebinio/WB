@@ -7,11 +7,10 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_IDS=${ADMIN_IDS}
-      - DATABASE_URL=sqlite+aiosqlite:///./app/database.db
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/database.db
       - UPLOAD_DIR=/app/data/uploads
     volumes:
-      - ./data/uploads:/app/data/uploads
-      - ./app/database.db:/app/app/database.db
+      - bot_data:/app/data
     restart: unless-stopped
     networks:
       - bot_network
@@ -19,3 +18,7 @@ services:
 networks:
   bot_network:
     driver: bridge
+
+volumes:
+  bot_data:
+    driver: local
