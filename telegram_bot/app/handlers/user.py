@@ -30,7 +30,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession):
     is_new_user = existing_user is None
     
     user = await UserRepository.get_or_create_user(
-        session, message.from_user.id, message.from_user.first_name
+        session, message.from_user.id, message.from_user.username
     )
 
     # Если пользователь без доступа
@@ -195,16 +195,28 @@ async def request_proxy(callback: CallbackQuery, session: AsyncSession):
 
     # Отправить уведомление администратору
     from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from config import BOT_TOKEN
 
     bot = Bot(token=BOT_TOKEN)
+    
+    # Создать кнопки для ответа админа
+    kb_buttons = [
+        [
+            InlineKeyboardButton(text="✅ Пополнил", callback_data=f"proxy_sent_confirm_{user.id}"),
+            InlineKeyboardButton(text="💬 Ответить", callback_data=f"proxy_respond_{user.id}")
+        ]
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(
                 admin_id,
                 f"🌐 Запрос прокси\n\n"
                 f"👤 Username: @{user.username or 'не указан'}\n"
-                f"🆔 User ID: {user.tg_id}"
+                f"🆔 User ID: {user.tg_id}",
+                reply_markup=keyboard
             )
         except:
             pass
@@ -373,16 +385,28 @@ async def request_numbers(callback: CallbackQuery, session: AsyncSession):
 
     # Отправить уведомление администратору
     from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from config import BOT_TOKEN
 
     bot = Bot(token=BOT_TOKEN)
+    
+    # Создать кнопки для ответа админа
+    kb_buttons = [
+        [
+            InlineKeyboardButton(text="✅ Пополнил", callback_data=f"numbers_sent_confirm_{user.id}"),
+            InlineKeyboardButton(text="💬 Ответить", callback_data=f"numbers_respond_{user.id}")
+        ]
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(
                 admin_id,
                 f"📱 Запрос номеров (DaisySMS)\n\n"
                 f"👤 Username: @{user.username or 'не указан'}\n"
-                f"🆔 User ID: {user.tg_id}"
+                f"🆔 User ID: {user.tg_id}",
+                reply_markup=keyboard
             )
         except:
             pass

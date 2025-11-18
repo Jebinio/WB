@@ -32,13 +32,16 @@ admin_router = Router()
 class AdminStates(StatesGroup):
     """Состояния для администратора"""
     waiting_for_notification_text = State()
-    waiting_for_user_id = State()
     waiting_for_call_datetime = State()
     waiting_for_notification_recipient = State()
     waiting_for_user_id_manage = State()
     waiting_for_access_decision = State()
     waiting_for_user_manage_username = State()
     waiting_for_admin_username = State()
+    waiting_for_numbers_response = State()
+    waiting_for_numbers_recipient = State()
+    waiting_for_proxy_response = State()
+    waiting_for_custom_notification_text = State()
 
 
 def is_admin(message_or_callback) -> bool:
@@ -113,15 +116,341 @@ async def send_notification_menu(callback: CallbackQuery, session: AsyncSession)
         await callback.answer("❌ Доступ запрещен.", show_alert=True)
         return
 
+    kb_buttons = [
+        [InlineKeyboardButton(text="💰 Зарплата выдана", callback_data="notify_salary")],
+        [InlineKeyboardButton(text="📞 Назначен созвон", callback_data="notify_call")],
+        [InlineKeyboardButton(text="⚠️ Назначен штраф", callback_data="notify_penalty")],
+        [InlineKeyboardButton(text="📝 Кастомное уведомление", callback_data="notify_custom")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+
     try:
         await callback.message.edit_text(
             "📢 Отправить уведомление\n\n"
             "Выберите тип уведомления:",
-            reply_markup=get_notification_type_keyboard()
+            reply_markup=keyboard
         )
     except Exception:
         pass
     await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin_respond_numbers")
+async def respond_numbers_menu(callback: CallbackQuery, session: AsyncSession):
+    """Меню ответа на запрос номеров"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    users = await UserRepository.get_all_users(session)
+    if not users:
+        kb_buttons = [
+            [InlineKeyboardButton(text="👨‍💼 Админ панель", callback_data="admin_back")],
+        ]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+        await callback.message.edit_text("👥 Пользователи не найдены", reply_markup=keyboard)
+        await callback.answer()
+        return
+
+    # Построить inline-клавиатуру со списком пользователей
+    kb_buttons = []
+    for u in users:
+        label = f"{u.username or u.tg_id} ({u.tg_id})"
+        kb_buttons.append([InlineKeyboardButton(text=label, callback_data=f"respond_numbers_user_{u.id}")])
+
+    # добавить кнопку назад
+    kb_buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    await callback.message.edit_text(
+        "📱 Выберите пользователя для отправки номеров:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("numbers_sent_confirm_"))
+async def numbers_sent_confirm(callback: CallbackQuery, session: AsyncSession):
+    """Обработчик подтверждения пополнения номеров"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    try:
+        user_id = int(callback.data.split("_")[-1])
+    except Exception:
+        await callback.answer("Ошибка обработки.", show_alert=True)
+        return
+
+    user = await UserRepository.get_user_by_id(session, user_id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден.", show_alert=True)
+        return
+
+    # Обновить сообщение админа
+    await callback.message.edit_text(
+        f"📱 Запрос номеров (DaisySMS)\n\n"
+        f"👤 Username: @{user.username or 'не указан'}\n"
+        f"🆔 User ID: {user.tg_id}\n\n"
+        f"✅ Сервис пополнен"
+    )
+
+    # Отправить уведомление пользователю о пополнении
+    from aiogram import Bot
+    bot = Bot(token=BOT_TOKEN)
+    try:
+        await bot.send_message(
+            user.tg_id,
+            f"✅ Ваш запрос обработан\n\n"
+            f"Администратор пополнил сервис аренды номеров для вашего аккаунта."
+        )
+    except:
+        pass
+
+    await LogRepository.create_log(
+        session, "numbers_service_replenished", user.id, admin_id=callback.from_user.id
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("proxy_sent_confirm_"))
+async def proxy_sent_confirm(callback: CallbackQuery, session: AsyncSession):
+    """Обработчик подтверждения пополнения прокси"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    try:
+        user_id = int(callback.data.split("_")[-1])
+    except Exception:
+        await callback.answer("Ошибка обработки.", show_alert=True)
+        return
+
+    user = await UserRepository.get_user_by_id(session, user_id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден.", show_alert=True)
+        return
+
+    # Обновить сообщение админа
+    await callback.message.edit_text(
+        f"🌐 Запрос прокси\n\n"
+        f"👤 Username: @{user.username or 'не указан'}\n"
+        f"🆔 User ID: {user.tg_id}\n\n"
+        f"✅ Прокси пополнены"
+    )
+
+    # Отправить уведомление пользователю о пополнении
+    from aiogram import Bot
+    bot = Bot(token=BOT_TOKEN)
+    try:
+        await bot.send_message(
+            user.tg_id,
+            f"✅ Ваш запрос обработан\n\n"
+            f"Администратор пополнил прокси для вашего аккаунта."
+        )
+    except:
+        pass
+
+    await LogRepository.create_log(
+        session, "proxy_service_replenished", user.id, admin_id=callback.from_user.id
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("proxy_respond_"))
+async def proxy_respond(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    """Обработчик кнопки ответа на запрос прокси"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    try:
+        user_id = int(callback.data.split("_")[-1])
+    except Exception:
+        await callback.answer("Ошибка обработки.", show_alert=True)
+        return
+
+    user = await UserRepository.get_user_by_id(session, user_id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден.", show_alert=True)
+        return
+
+    # Сохранить ID пользователя в состояние
+    await state.update_data(proxy_respond_user_id=user.tg_id, proxy_respond_username=user.username)
+    
+    await callback.message.edit_text(
+        f"💬 Ответить пользователю @{user.username}\n\n"
+        f"Введите текст ответа:"
+    )
+    await state.set_state(AdminStates.waiting_for_proxy_response)
+    await callback.answer()
+
+
+
+@admin_router.callback_query(F.data.startswith("numbers_respond_"))
+async def numbers_respond(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    """Обработчик кнопки ответа на запрос номеров"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    try:
+        user_id = int(callback.data.split("_")[-1])
+    except Exception:
+        await callback.answer("Ошибка обработки.", show_alert=True)
+        return
+
+    user = await UserRepository.get_user_by_id(session, user_id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден.", show_alert=True)
+        return
+
+    # Сохранить ID пользователя в состояние
+    await state.update_data(numbers_respond_user_id=user.tg_id, numbers_respond_username=user.username)
+    
+    await callback.message.edit_text(
+        f"💬 Ответить пользователю @{user.username}\n\n"
+        f"Введите текст ответа:"
+    )
+    await state.set_state(AdminStates.waiting_for_numbers_response)
+    await callback.answer()
+
+
+
+@admin_router.callback_query(F.data.startswith("respond_numbers_user_"))
+async def respond_numbers_user_selected(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    """Выбран пользователь для отправки номеров"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    try:
+        user_id = int(callback.data.split("_")[-1])
+    except Exception:
+        await callback.answer("Некорректный пользователь.", show_alert=True)
+        return
+
+    user = await UserRepository.get_user_by_id(session, user_id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден.", show_alert=True)
+        return
+
+    # Сохранить ID пользователя в состояние
+    await state.update_data(numbers_recipient_id=user.tg_id, numbers_recipient_username=user.username)
+    
+    await callback.message.edit_text(
+        f"📱 Пополнить сервис аренды номеров для @{user.username}\n\n"
+        f"Введите информацию или комментарий для пользователя:"
+    )
+    await state.set_state(AdminStates.waiting_for_numbers_response)
+    await callback.answer()
+
+
+@admin_router.message(AdminStates.waiting_for_numbers_response)
+async def handle_numbers_input(message: Message, state: FSMContext, session: AsyncSession):
+    """Обработать пополнение сервиса и отправить уведомление пользователю"""
+    if not is_admin(message):
+        await message.answer("❌ У вас нет доступа.")
+        await state.clear()
+        return
+
+    response_text = message.text.strip()
+    data = await state.get_data()
+    
+    # Проверяем, откуда был вызван ввод (из меню или из кнопки)
+    recipient_id = data.get("numbers_respond_user_id") or data.get("numbers_recipient_id")
+    recipient_username = data.get("numbers_respond_username") or data.get("numbers_recipient_username")
+
+    if not response_text:
+        await message.answer("❌ Текст не введен. Пожалуйста, попробуйте еще раз.")
+        return
+
+    # Отправить ответ пользователю
+    from aiogram import Bot
+    bot = Bot(token=BOT_TOKEN)
+
+    try:
+        await bot.send_message(
+            recipient_id,
+            f"✅ Ответ администратора\n\n"
+            f"{response_text}"
+        )
+        
+        await message.answer(
+            f"✅ Ответ отправлен пользователю @{recipient_username}"
+        )
+        
+        await LogRepository.create_log(
+            session, "numbers_response_sent", recipient_id, 
+            admin_id=message.from_user.id,
+            description=f"Response: {response_text}"
+        )
+    except Exception as e:
+        await message.answer(
+            f"❌ Ошибка при отправке ответа\n\n"
+            f"Ошибка: {str(e)}"
+        )
+
+    await state.clear()
+    await message.answer(
+        "👨‍💼 Панель администратора\n\n"
+        "Выберите действие:",
+        reply_markup=get_admin_main_keyboard()
+    )
+
+
+@admin_router.message(AdminStates.waiting_for_proxy_response)
+async def handle_proxy_input(message: Message, state: FSMContext, session: AsyncSession):
+    """Обработать ответ на запрос прокси"""
+    if not is_admin(message):
+        await message.answer("❌ У вас нет доступа.")
+        await state.clear()
+        return
+
+    response_text = message.text.strip()
+    data = await state.get_data()
+    
+    recipient_id = data.get("proxy_respond_user_id")
+    recipient_username = data.get("proxy_respond_username")
+
+    if not response_text:
+        await message.answer("❌ Текст не введен. Пожалуйста, попробуйте еще раз.")
+        return
+
+    # Отправить ответ пользователю
+    from aiogram import Bot
+    bot = Bot(token=BOT_TOKEN)
+
+    try:
+        await bot.send_message(
+            recipient_id,
+            f"✅ Ответ администратора\n\n"
+            f"{response_text}"
+        )
+        
+        await message.answer(
+            f"✅ Ответ отправлен пользователю @{recipient_username}"
+        )
+        
+        await LogRepository.create_log(
+            session, "proxy_response_sent", recipient_id, 
+            admin_id=message.from_user.id,
+            description=f"Response: {response_text}"
+        )
+    except Exception as e:
+        await message.answer(
+            f"❌ Ошибка при отправке ответа\n\n"
+            f"Ошибка: {str(e)}"
+        )
+
+    await state.clear()
+    await message.answer(
+        "👨‍💼 Панель администратора\n\n"
+        "Выберите действие:",
+        reply_markup=get_admin_main_keyboard()
+    )
+
 
 
 @admin_router.callback_query(F.data == "admin_back")
@@ -684,14 +1013,24 @@ async def unlock_account(callback: CallbackQuery, session: AsyncSession):
     await callback.answer()
 
 
-@admin_router.callback_query(F.data.startswith("notify_"))
-async def handle_notification_callback(callback: CallbackQuery, state: FSMContext):
+@admin_router.callback_query(F.data.startswith("notify_") & ~F.data.startswith("notify_user_select_"))
+async def handle_notification_callback(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Обработчик выбора типа уведомления"""
     if not is_admin(callback):
         await callback.answer("❌ Доступ запрещен.", show_alert=True)
         return
 
     notification_type = callback.data.replace("notify_", "")
+
+    if notification_type == "custom":
+        # Кастомное уведомление
+        await callback.message.edit_text(
+            "📝 Кастомное уведомление\n\n"
+            "Введите текст уведомления:"
+        )
+        await state.set_state(AdminStates.waiting_for_custom_notification_text)
+        await callback.answer()
+        return
 
     if notification_type in ["salary", "call", "penalty"]:
         # Сохранить тип уведомления в состояние
@@ -707,29 +1046,70 @@ async def handle_notification_callback(callback: CallbackQuery, state: FSMContex
             await state.set_state(AdminStates.waiting_for_call_datetime)
         else:
             # Спросить кому отправить для остальных типов
+            kb_buttons = [
+                [InlineKeyboardButton(text="👤 Конкретному пользователю", callback_data="notify_single")],
+                [InlineKeyboardButton(text="👥 Всем пользователям", callback_data="notify_all")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_send_notification")],
+            ]
+            keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
             await callback.message.edit_text(
                 "👥 Кому отправить уведомление?",
-                reply_markup=get_notification_recipient_keyboard()
+                reply_markup=keyboard
             )
+        await callback.answer()
+        return
+        
     elif notification_type in ["single", "all"]:
-        data = await state.get_data()
         await state.update_data(recipient_type=notification_type)
 
         if notification_type == "single":
+            # Показать список пользователей
+            users = await UserRepository.get_all_users(session)
+            if not users:
+                await callback.message.edit_text("👥 Пользователи не найдены")
+                await callback.answer()
+                return
+
+            # Построить inline-клавиатуру со списком пользователей
+            kb_buttons = []
+            for user in users:
+                if user.tg_id == callback.from_user.id:  # Пропустить текущего админа
+                    continue
+                label = f"@{user.username}" if user.username else f"ID: {user.tg_id}"
+                kb_buttons.append([InlineKeyboardButton(text=label, callback_data=f"notify_user_select_{user.id}")])
+
+            if not kb_buttons:
+                await callback.message.edit_text("👥 Нет других пользователей")
+                await callback.answer()
+                return
+
+            kb_buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_send_notification")])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+
             await callback.message.edit_text(
-                "👤 Введите username пользователя\n\n"
-                "Пример: ivan_petrov"
+                "👤 Выберите пользователя для отправки уведомления:",
+                reply_markup=keyboard
             )
-            await state.set_state(AdminStates.waiting_for_user_id)
-        else:
-            # Отправить всем
-            notification_type = data.get("notification_type")
-            text = get_notification_text(notification_type)
+        else:  # all
+            data = await state.get_data()
+            notification_type = data.get("notification_type", "custom")
+            
+            if notification_type == "custom":
+                text = data.get("custom_notification_text")
+            else:
+                call_datetime = data.get("call_datetime")
+                text = get_notification_text(notification_type, call_datetime)
+            
+            kb_buttons = [
+                [InlineKeyboardButton(text="✅ Да", callback_data="confirm_yes")],
+                [InlineKeyboardButton(text="❌ Нет", callback_data="confirm_no")],
+            ]
+            keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
             
             await callback.message.edit_text(
                 f"📢 Уведомление\n\n{text}\n\n"
                 "Нажмите 'Да' для отправки всем пользователям или 'Нет' для отмены",
-                reply_markup=get_confirm_keyboard()
+                reply_markup=keyboard
             )
 
     await callback.answer()
@@ -749,40 +1129,105 @@ async def get_call_datetime(message: Message, state: FSMContext):
     await state.update_data(call_datetime=datetime_text)
     
     # Спросить кому отправить
+    kb_buttons = [
+        [InlineKeyboardButton(text="👤 Конкретному пользователю", callback_data="notify_single")],
+        [InlineKeyboardButton(text="👥 Всем пользователям", callback_data="notify_all")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_send_notification")],
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    
     await message.answer(
         "👥 Кому отправить уведомление?",
-        reply_markup=get_notification_recipient_keyboard()
+        reply_markup=keyboard
     )
-    await state.set_state(AdminStates.waiting_for_user_id)
 
 
-@admin_router.message(AdminStates.waiting_for_user_id)
-async def get_notification_recipient_id(message: Message, state: FSMContext, session: AsyncSession):
-    """Получить username пользователя для уведомления"""
-    username = message.text.strip()
+@admin_router.message(AdminStates.waiting_for_custom_notification_text)
+async def handle_custom_notification_text(message: Message, state: FSMContext):
+    """Обработчик текста кастомного уведомления"""
+    if not is_admin(message):
+        await message.answer("❌ У вас нет доступа.")
+        await state.clear()
+        return
+
+    custom_text = message.text.strip()
+    if not custom_text:
+        await message.answer("❌ Текст не введен. Пожалуйста, попробуйте еще раз.")
+        return
+
+    await state.update_data(custom_notification_text=custom_text, notification_type="custom")
     
-    # Поискать пользователя по username
-    stmt = select(User).where(User.username == username)
-    result = await session.execute(stmt)
-    user = result.scalar_one_or_none()
+    # Спросить кому отправить
+    kb_buttons = [
+        [InlineKeyboardButton(text="👤 Конкретному пользователю", callback_data="notify_single")],
+        [InlineKeyboardButton(text="👥 Всем пользователям", callback_data="notify_all")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_send_notification")],
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
     
+    await message.answer(
+        f"📝 Ваше уведомление:\n\n{custom_text}\n\n"
+        "Кому отправить?",
+        reply_markup=keyboard
+    )
+
+
+@admin_router.callback_query(F.data.startswith("notify_user_select_"))
+async def select_notification_user(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    """Выбрать пользователя для отправки уведомления из списка"""
+    if not is_admin(callback):
+        await callback.answer("❌ Доступ запрещен.", show_alert=True)
+        return
+
+    try:
+        user_id = int(callback.data.split("_")[-1])
+    except Exception as e:
+        import logging
+        logging.error(f"Error parsing user_id from {callback.data}: {e}")
+        await callback.answer("Ошибка обработки.", show_alert=True)
+        return
+
+    user = await UserRepository.get_user_by_id(session, user_id)
     if not user:
-        await message.answer(f"❌ Пользователь с username '{username}' не найден.")
+        await callback.answer("❌ Пользователь не найден.", show_alert=True)
         return
 
     data = await state.get_data()
-    notification_type = data.get("notification_type")
-    call_datetime = data.get("call_datetime")
-    text = get_notification_text(notification_type, call_datetime)
-
     await state.update_data(recipient_id=user.tg_id)
+    
+    # Получить текст уведомления в зависимости от типа
+    notification_type = data.get("notification_type", "custom")
+    
+    if notification_type == "custom":
+        text = data.get("custom_notification_text", "Тестовое уведомление")
+    else:
+        call_datetime = data.get("call_datetime", "")
+        text = get_notification_text(notification_type, call_datetime)
 
-    await message.answer(
-        f"📢 Уведомление для @{user.username}\n\n"
-        f"{text}\n\n"
-        f"Нажмите 'Да' для отправки или 'Нет' для отмены",
-        reply_markup=get_confirm_keyboard()
-    )
+    if not text:
+        text = "Уведомление"
+
+    kb_buttons = [
+        [InlineKeyboardButton(text="✅ Да", callback_data="confirm_yes")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data="confirm_no")],
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+
+    user_label = f"ID: {user.tg_id}"
+    if user.username and user.username != "!":
+        user_label = f"@{user.username}"
+    
+    message_text = f"📢 Уведомление для {user_label}\n\n{text}\n\nНажмите 'Да' для отправки или 'Нет' для отмены"
+    
+    try:
+        await callback.message.edit_text(message_text, reply_markup=keyboard)
+    except Exception as e:
+        import logging
+        logging.error(f"Error editing message: {e}")
+        await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
+        return
+    
+    await callback.answer()
 
 
 @admin_router.callback_query(F.data == "confirm_yes")
@@ -793,31 +1238,38 @@ async def send_notification(callback: CallbackQuery, state: FSMContext, session:
         return
 
     data = await state.get_data()
-    notification_type = data.get("notification_type")
     recipient_type = data.get("recipient_type", "single")
     recipient_id = data.get("recipient_id")
-    call_datetime = data.get("call_datetime")
-
-    text = get_notification_text(notification_type, call_datetime)
+    notification_type = data.get("notification_type", "custom")
 
     from aiogram import Bot
     from config import BOT_TOKEN
     bot = Bot(token=BOT_TOKEN)
 
+    # Получить текст в зависимости от типа уведомления
+    if notification_type == "custom":
+        text = data.get("custom_notification_text", "Уведомление")
+        log_action = "custom_notification_sent"
+    else:
+        call_datetime = data.get("call_datetime", "")
+        text = get_notification_text(notification_type, call_datetime)
+        log_action = f"notification_sent_{notification_type}"
+
     if recipient_type == "single":
+        if not recipient_id:
+            await callback.message.edit_text("❌ Ошибка: получатель не выбран")
+            await callback.answer()
+            return
+        
         try:
             await bot.send_message(recipient_id, text)
-            await callback.message.edit_text(
-                f"✅ Уведомление отправлено"
-            )
+            await callback.message.edit_text("✅ Уведомление отправлено")
             await LogRepository.create_log(
-                session, f"notification_sent_{notification_type}", 
+                session, log_action, 
                 recipient_id, admin_id=callback.from_user.id
             )
         except Exception as e:
-            await callback.message.edit_text(
-                f"❌ Ошибка при отправке\n\n{str(e)}"
-            )
+            await callback.message.edit_text(f"❌ Ошибка при отправке\n\n{str(e)}")
     else:  # all
         users = await UserRepository.get_all_users(session)
         sent_count = 0
@@ -832,8 +1284,10 @@ async def send_notification(callback: CallbackQuery, state: FSMContext, session:
         await callback.message.edit_text(
             f"✅ Уведомление отправлено {sent_count} пользователям"
         )
+        
+        log_action_all = log_action.replace("_sent", "_sent_all")
         await LogRepository.create_log(
-            session, f"notification_sent_all_{notification_type}",
+            session, log_action_all,
             admin_id=callback.from_user.id,
             description=f"Sent to {sent_count} users"
         )
@@ -872,7 +1326,7 @@ async def manage_allow_user_callback(callback: CallbackQuery, session: AsyncSess
     kb_buttons = []
     for user in users:
         if not user.access:
-            label = f"{user.username or user.tg_id}"
+            label = f"@{user.username}" if user.username else f"ID: {user.tg_id}"
             kb_buttons.append([InlineKeyboardButton(text=label, callback_data=f"user_allow_{user.id}")])
 
     if not kb_buttons:
@@ -913,7 +1367,7 @@ async def manage_deny_user_callback(callback: CallbackQuery, session: AsyncSessi
     kb_buttons = []
     for user in users:
         if user.access:
-            label = f"{user.username or user.tg_id}"
+            label = f"@{user.username}" if user.username else f"ID: {user.tg_id}"
             kb_buttons.append([InlineKeyboardButton(text=label, callback_data=f"user_deny_{user.id}")])
 
     if not kb_buttons:
